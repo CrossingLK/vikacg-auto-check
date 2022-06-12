@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 const URL = "https://www.vikacg.com/wp-json/b2/v1/userMission"
 
 var authorizations = os.Getenv("AUTHORIZATION")
+var cookies = os.Getenv("COOKIE")
 
 type checkResult struct {
 	Credit  int     `json:"credit"`
@@ -24,21 +26,26 @@ type mission struct {
 
 func main() {
 
-	if authorizations == "" {
+	if authorizations == "" || cookies == "" {
 		log.Print("no configuration was read, please check the configuration")
 		return
 	}
 
 	authorizationArray := strings.Split(authorizations, "#")
+	cookieArray := strings.Split(cookies, "#")
 	length := len(authorizationArray)
+	if length != len(cookieArray) {
+		log.Print("configuration error missing authorization or cookie parameter")
+		return
+	}
 
 	for i := 0; i < length; i++ {
 		log.Printf("正在签到第%d个用户, 共计%d个用户", i+1, length)
-		check(authorizationArray[i])
+		check(authorizationArray[i], cookieArray[i])
 	}
 }
 
-func check(authorization string) {
+func check(authorization string, cookie string) {
 	request, err := http.NewRequest(http.MethodPost, URL, nil)
 	if err != nil {
 		log.Print(err)
@@ -46,6 +53,7 @@ func check(authorization string) {
 	}
 
 	request.Header.Add("authorization", authorization)
+	request.Header.Add("cookie", cookie)
 
 	client := &http.Client{}
 	response, err := client.Do(request)
@@ -54,7 +62,12 @@ func check(authorization string) {
 		return
 	}
 
-	defer response.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Print(err)
+		}
+	}(response.Body)
 	bytes, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		log.Print(err)
